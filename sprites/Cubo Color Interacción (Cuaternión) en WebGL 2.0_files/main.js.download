@@ -1,0 +1,206 @@
+import { Cubo } from './cuboColor.js';
+import { Esfera } from './esfera.js';
+import { Cilindro } from './cilindro.js';
+import { ArcBall } from './arcBall.js';
+import { Cuaternion } from './cuaternion.js';
+import { ortho, identidad, escalacion, multiplica, rotacionZ, rotacionY, rotacionX, traslacion } from './matrices.js';
+
+/* Variables globales */
+let canvas;
+let programaID;
+let gl;
+let cubo;
+let esfera;
+let cilindro;
+let arcBall;
+
+/* Variables Uniformes */
+let uMatrizProyeccion;
+let uMatrizVista;
+let uMatrizModelo;
+
+/* Matrices */
+let MatrizProyeccion = new Array(16);
+let MatrizVista = new Array(16);
+let MatrizModelo = new Array(16);
+
+/* Para la interacción */
+let MatrizRotacion = new Array(16);
+let Matriz = new Array(16);
+let boton_izq_presionado = false;
+
+/***************************************************************************/
+/* Se crean, compilan y enlazan los programas Shader                       */
+/***************************************************************************/
+function compilaEnlazaLosShaders() {
+
+    /* Se compila el shader de vertice */
+    var shaderDeVertice = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(shaderDeVertice, document.getElementById("vs").text.trim());
+    gl.compileShader(shaderDeVertice);
+    if (!gl.getShaderParameter(shaderDeVertice, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shaderDeVertice));
+    }
+
+    /* Se compila el shader de fragmento */
+    var shaderDeFragmento = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(shaderDeFragmento, document.getElementById("fs").text.trim());
+    gl.compileShader(shaderDeFragmento);
+    if (!gl.getShaderParameter(shaderDeFragmento, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shaderDeFragmento));
+    }
+
+    /* Se enlaza ambos shader */
+    programaID = gl.createProgram();
+    gl.attachShader(programaID, shaderDeVertice);
+    gl.attachShader(programaID, shaderDeFragmento);
+    gl.linkProgram(programaID);
+    if (!gl.getProgramParameter(programaID, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(programaID));
+    }
+
+    /* Se instala el programa de shaders para utilizarlo */
+    gl.useProgram(programaID);
+}
+
+/***************************************************************************/
+/* Eventos del Ratón                                                       */
+/***************************************************************************/
+
+function mouseDown(event) {
+    var posx = new Number();
+    var posy = new Number();
+
+    /* Obtiene la coordenada dentro de la área mayor */
+    if (event.x != undefined && event.y != undefined) {
+        posx = event.x;
+        posy = event.y;
+    } else {
+        posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+        posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+    }
+
+    /* Obtiene la coordenada dentro del canvas */
+    posx = posx - canvas.offsetLeft;
+    posy = posy - canvas.offsetTop;
+
+    /* Matriz = MatrizRotacion */
+    Matriz = MatrizRotacion.slice(); /* Copia */
+    arcBall.primerPunto(posx, posy);
+
+    boton_izq_presionado = true;
+
+    return false;
+};
+
+function mouseUp(e) {
+    boton_izq_presionado = false;
+};
+
+function mouseMove(event) {
+    if (!boton_izq_presionado)
+        return false;
+
+    var posx = new Number();
+    var posy = new Number();
+
+    /* Obtiene la coordenada dentro de la área mayor */
+    if (event.x != undefined && event.y != undefined) {
+        posx = event.x;
+        posy = event.y;
+    } else {
+        posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+        posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+    }
+
+    /* Obtiene la coordenada dentro del canvas */
+    posx = posx - canvas.offsetLeft;
+    posy = posy - canvas.offsetTop;
+
+    /* Actualiza el segundo vector y obtiene el cuaternión */
+    let q = arcBall.segundoPunto(posx, posy);
+
+    /* Convierte el cuaternión a una matriz de rotación */
+    Cuaternion.rota2(MatrizRotacion, q);
+
+    /* MatrizRotacion = MatrizRotacion * Matriz */
+    multiplica(MatrizRotacion, MatrizRotacion, Matriz);
+
+};
+
+function dibuja() {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    /* Matriz del Modelo */
+    identidad(MatrizModelo);             // M = I
+    escalacion(MatrizModelo, 3, 3, 3);
+    multiplica(MatrizModelo, MatrizModelo, MatrizRotacion); // M = M * MatrizRotacion
+    gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+    
+    // cubo.dibuja(gl);
+    esfera.dibuja(gl);
+    
+    // identidad(MatrizModelo);
+    rotacionX(MatrizModelo, 90);
+    rotacionY(MatrizModelo, 10);
+    rotacionZ(MatrizModelo, 40);
+    traslacion(MatrizModelo, 0, 0, 0.27*2);
+    escalacion(MatrizModelo, 0.04, 0.04, 0.27);
+    gl.uniformMatrix4fv(uMatrizModelo, false, MatrizModelo);
+    cilindro.dibuja(gl);
+
+    requestAnimationFrame(dibuja);
+}
+
+
+function reinicia() {
+    /* Matriz de Rotación */
+    identidad(MatrizRotacion);
+
+    dibuja();
+}
+
+function main() {
+    canvas = document.getElementById("webglcanvas");
+    gl = canvas.getContext("webgl2");
+    if (!gl) {
+        document.textContent("WebGL 2.0 no está disponible en tu navegador");
+        return;
+    }
+
+    /* Para detectar los eventos del ratón */
+    canvas.addEventListener("mousedown", mouseDown, false);
+    canvas.addEventListener("mouseup", mouseUp, false);
+    canvas.addEventListener("mouseout", mouseUp, false);
+    canvas.addEventListener("mousemove", mouseMove, false);
+
+    /* Para los botones */
+    document.getElementById("reset").onclick = reinicia;
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    compilaEnlazaLosShaders();
+
+    cubo = new Cubo(gl);
+    esfera = new Esfera(gl, 1, 48, 48);
+    cilindro = new Cilindro(gl, 1, 4, 24, true, true);
+
+    arcBall = new ArcBall(500.0, 500.0);
+
+    gl.useProgram(programaID);
+    uMatrizProyeccion = gl.getUniformLocation(programaID, "uMatrizProyeccion");
+    uMatrizVista = gl.getUniformLocation(programaID, "uMatrizVista");
+    uMatrizModelo = gl.getUniformLocation(programaID, "uMatrizModelo");
+    ortho(MatrizProyeccion, -5, 5, -5, 5, -5, 5);
+    gl.uniformMatrix4fv(uMatrizProyeccion, false, MatrizProyeccion);
+    identidad(MatrizVista);
+    gl.uniformMatrix4fv(uMatrizVista, false, MatrizVista);
+    identidad(MatrizRotacion);
+
+    /* Ajusta el ancho a [-1..1] y el alto a [-1..1] */
+    arcBall.ajusta(gl.canvas.width, gl.canvas.height);
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    dibuja();
+}
+window.onload = main;
