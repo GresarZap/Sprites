@@ -18,7 +18,7 @@ export async function loadFile(path) {
 
 function buildUrl(path) {
     let isLocal = window.location.hostname === '127.0.0.1';
-    const baseUrl = window.location.origin + (isLocal?'':'/Lampara/');
+    const baseUrl = window.location.origin + (isLocal?'':'/Sprites/');
     console.log(`Base URL: ${baseUrl}, Path: ${path}`);
     return baseUrl + path;
 }
